@@ -9,11 +9,13 @@ class Event {
   final DateTime startDatetime;
   final DateTime endDatetime;
   final String? categoryId;
-  final Category? category; // Joined from Categories
+  final Category? category;
   final String? bannerUrl;
   final String? registrationLink;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  // Compatibility fields
   final int? maxParticipants;
   final bool isPinned;
 
@@ -35,35 +37,33 @@ class Event {
     this.isPinned = false,
   });
 
-  // Getter for backward compatibility and database schema mapping
+  /// Backward compatibility
   String get organizer => organizerName;
 
   factory Event.fromJson(Map<String, dynamic> json) {
-    Category? cat;
-    if (json['categories'] != null) {
-      cat = Category.fromJson(json['categories'] as Map<String, dynamic>);
-    }
-
     return Event(
-      id: json['id'] as String,
-      title: json['title'] as String? ?? '',
-      description: json['description'] as String?,
-      venue: json['venue'] as String? ?? '',
-      organizerName: json['organizer_name'] as String? ?? json['organizer'] as String? ?? '',
-      startDatetime: DateTime.parse(json['start_datetime'] as String),
-      endDatetime: DateTime.parse(json['end_datetime'] as String),
-      categoryId: json['category_id'] as String?,
-      category: cat,
-      bannerUrl: json['banner_url'] as String?,
-      registrationLink: json['registration_link'] as String?,
-      createdAt: json['created_at'] != null 
-          ? DateTime.parse(json['created_at'] as String) 
+      id: json['id']?.toString() ?? '',
+      title: json['title'] ?? '',
+      description: json['description'],
+      venue: json['venue'] ?? '',
+      organizerName:
+          json['organizer_name'] ?? json['organizer'] ?? '',
+      startDatetime: DateTime.parse(json['start_datetime']),
+      endDatetime: DateTime.parse(json['end_datetime']),
+      categoryId: json['category_id'],
+      category: json['categories'] != null
+          ? Category.fromJson(json['categories'])
+          : null,
+      bannerUrl: json['banner_url'],
+      registrationLink: json['registration_link'],
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
           : DateTime.now(),
-      updatedAt: json['updated_at'] != null 
-          ? DateTime.parse(json['updated_at'] as String) 
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
           : DateTime.now(),
-      maxParticipants: json['max_participants'] as int?,
-      isPinned: json['is_pinned'] as bool? ?? false,
+      maxParticipants: json['max_participants'],
+      isPinned: json['is_pinned'] ?? false,
     );
   }
 
@@ -74,14 +74,13 @@ class Event {
       'description': description,
       'venue': venue,
       'organizer_name': organizerName,
-      'organizer': organizerName, // Include both for database compatibility
       'start_datetime': startDatetime.toIso8601String(),
       'end_datetime': endDatetime.toIso8601String(),
       'category_id': categoryId,
       'banner_url': bannerUrl,
       'registration_link': registrationLink,
-      'max_participants': maxParticipants,
-      'is_pinned': isPinned,
+      // Do NOT send max_participants or is_pinned
+      // because your current Supabase table doesn't have them.
     };
   }
 

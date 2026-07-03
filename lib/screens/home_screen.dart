@@ -75,9 +75,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return Container(
         width: 260,
         color: colorScheme.surfaceContainer,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
               child: Row(
@@ -184,8 +185,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ],
         ),
-      );
-    }
+      ),
+    );
+  }
 
     Widget buildTopBar() {
       return Row(
@@ -370,9 +372,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         width: 320,
         color: colorScheme.surfaceContainer.withOpacity(0.4),
         padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             Text(
               'Agenda Schedule',
               style: TextStyle(
@@ -404,8 +407,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ],
         ),
-      );
-    }
+      ),
+    );
+  }
 
     return Scaffold(
       drawer: isMobile ? buildSidebar() : null,
@@ -414,8 +418,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           if (!isMobile) buildSidebar(),
           
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -471,6 +476,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
           ),
+        ),
           
           if (!isMobile && !isTablet) buildSchedulePanel(),
         ],
