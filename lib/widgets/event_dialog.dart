@@ -1,16 +1,15 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../models/event.dart';
 import '../providers/category_provider.dart';
 import '../providers/event_provider.dart';
-import '../services/supabase_service.dart';
 
 class EventDialog extends ConsumerStatefulWidget {
   final Event? event; // Null for Add Event, non-null for Edit Event
+  final DateTime? initialDate;
 
-  const EventDialog({super.key, this.event});
+  const EventDialog({super.key, this.event, this.initialDate});
 
   @override
   ConsumerState<EventDialog> createState() => _EventDialogState();
@@ -24,7 +23,6 @@ class _EventDialogState extends ConsumerState<EventDialog> {
   late TextEditingController _venueController;
   late TextEditingController _orgController;
   late TextEditingController _regLinkController;
-  late TextEditingController _bannerUrlController;
 
   DateTime _startDate = DateTime.now();
   TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
@@ -44,9 +42,13 @@ class _EventDialogState extends ConsumerState<EventDialog> {
     _venueController = TextEditingController(text: event?.venue ?? '');
     _orgController = TextEditingController(text: event?.organizerName ?? '');
     _regLinkController = TextEditingController(text: event?.registrationLink ?? '');
-    _bannerUrlController = TextEditingController(text: event?.bannerUrl ?? '');
 
-    if (event != null) {
+    if (widget.initialDate != null) {
+      _startDate = widget.initialDate!;
+      _startTime = const TimeOfDay(hour: 9, minute: 0);
+      _endDate = widget.initialDate!.add(const Duration(hours: 1));
+      _endTime = const TimeOfDay(hour: 10, minute: 0);
+    } else if (event != null) {
       _startDate = event.startDatetime;
       _startTime = TimeOfDay.fromDateTime(event.startDatetime);
       _endDate = event.endDatetime;
@@ -62,7 +64,6 @@ class _EventDialogState extends ConsumerState<EventDialog> {
     _venueController.dispose();
     _orgController.dispose();
     _regLinkController.dispose();
-    _bannerUrlController.dispose();
     super.dispose();
   }
 
@@ -121,48 +122,9 @@ class _EventDialogState extends ConsumerState<EventDialog> {
     }
   }
 
-  Future<void> _handleUpload() async {
-    setState(() {
-      _isSubmitting = true;
-    });
-
-    try {
-      final mockBytes = Uint8List(0);
-      final resultUrl = await SupabaseService.instance.uploadBannerImage(
-        mockBytes,
-        'banner_upload.png',
-      );
-
-      if (resultUrl != null) {
-        setState(() {
-          _bannerUrlController.text = resultUrl;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Banner image uploaded successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Upload failed: $e')),
-      );
-    } finally {
-      setState(() {
-        _isSubmitting = false;
-      });
-    }
-  }
 
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedCategoryId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a category')),
-      );
-      return;
-    }
 
     final start = DateTime(
       _startDate.year,
@@ -200,7 +162,7 @@ class _EventDialogState extends ConsumerState<EventDialog> {
       startDatetime: start,
       endDatetime: end,
       categoryId: _selectedCategoryId,
-      bannerUrl: _bannerUrlController.text.trim().isEmpty ? null : _bannerUrlController.text.trim(),
+      bannerUrl: widget.event?.bannerUrl,
       registrationLink: _regLinkController.text.trim().isEmpty ? null : _regLinkController.text.trim(),
       createdAt: widget.event?.createdAt ?? DateTime.now(),
       updatedAt: DateTime.now(),
@@ -269,31 +231,37 @@ class _EventDialogState extends ConsumerState<EventDialog> {
 
                 categoriesAsync.when(
                   data: (categories) {
-                    return DropdownButtonFormField<String>(
+                    return DropdownButtonFormField<String?>(
                       value: _selectedCategoryId,
                       decoration: const InputDecoration(
-                        labelText: 'Category *',
+                        labelText: 'Category (Optional)',
                       ),
-                      items: categories.map((cat) {
-                        final catColor = Color(int.parse(cat.color.replaceAll('#', '0xFF')));
-                        return DropdownMenuItem<String>(
-                          value: cat.id,
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 14,
-                                height: 14,
-                                decoration: BoxDecoration(
-                                  color: catColor,
-                                  shape: BoxShape.circle,
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('None (No Category)'),
+                        ),
+                        ...categories.map((cat) {
+                          final catColor = Color(int.parse(cat.color.replaceAll('#', '0xFF')));
+                          return DropdownMenuItem<String?>(
+                            value: cat.id,
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 14,
+                                  height: 14,
+                                  decoration: BoxDecoration(
+                                    color: catColor,
+                                    shape: BoxShape.circle,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 10),
-                              Text(cat.name),
-                            ],
-                          ),
-                        );
-                      }).toList(),
+                                const SizedBox(width: 10),
+                                Text(cat.name),
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
                       onChanged: (val) {
                         setState(() {
                           _selectedCategoryId = val;
@@ -312,7 +280,7 @@ class _EventDialogState extends ConsumerState<EventDialog> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Start Date & Time *', style: TextStyle(fontWeight: FontWeight.bold)),
+                          const Text('Start Date & Time', style: TextStyle(fontWeight: FontWeight.bold)),
                           const SizedBox(height: 8),
                           OutlinedButton.icon(
                             onPressed: _pickStartDate,
@@ -333,7 +301,7 @@ class _EventDialogState extends ConsumerState<EventDialog> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('End Date & Time *', style: TextStyle(fontWeight: FontWeight.bold)),
+                          const Text('End Date & Time', style: TextStyle(fontWeight: FontWeight.bold)),
                           const SizedBox(height: 8),
                           OutlinedButton.icon(
                             onPressed: _pickEndDate,
@@ -358,16 +326,14 @@ class _EventDialogState extends ConsumerState<EventDialog> {
                     Expanded(
                       child: TextFormField(
                         controller: _venueController,
-                        decoration: const InputDecoration(labelText: 'Venue *'),
-                        validator: (value) => value == null || value.trim().isEmpty ? 'Venue is required' : null,
+                        decoration: const InputDecoration(labelText: 'Venue (Optional)'),
                       ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
                       child: TextFormField(
                         controller: _orgController,
-                        decoration: const InputDecoration(labelText: 'Organizer Name *'),
-                        validator: (value) => value == null || value.trim().isEmpty ? 'Organizer Name is required' : null,
+                        decoration: const InputDecoration(labelText: 'Organizer Name (Optional)'),
                       ),
                     ),
                   ],
@@ -381,30 +347,7 @@ class _EventDialogState extends ConsumerState<EventDialog> {
                     hintText: 'https://...',
                   ),
                 ),
-                const SizedBox(height: 16),
 
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _bannerUrlController,
-                        decoration: const InputDecoration(
-                          labelText: 'Banner Image URL',
-                          hintText: 'https://images.unsplash.com/...',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    OutlinedButton.icon(
-                      onPressed: _isSubmitting ? null : _handleUpload,
-                      icon: const Icon(Icons.cloud_upload_rounded),
-                      label: const Text('Mock Upload'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                      ),
-                    ),
-                  ],
-                ),
                 const SizedBox(height: 16),
               ],
             ),

@@ -3,13 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart' as sf;
 import 'package:intl/intl.dart';
 import '../models/event.dart';
+import '../models/category.dart';
 import '../providers/event_provider.dart';
 import '../providers/category_provider.dart';
 import '../providers/theme_provider.dart';
-import '../services/supabase_service.dart';
 import '../services/export_service.dart';
+import '../services/notification_service.dart';
 import '../widgets/calendar_widget.dart';
 import '../widgets/event_dialog.dart';
+import '../widgets/date_events_dialog.dart';
+import '../widgets/hover_scale_widget.dart';
 import 'event_detail_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -21,6 +24,14 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationService.instance.requestPermission();
+    });
+  }
 
   @override
   void dispose() {
@@ -35,10 +46,135 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  void _showDateEventsDialog(DateTime date) {
+    showDialog(
+      context: context,
+      builder: (context) => DateEventsDialog(date: date),
+    );
+  }
+
   void _showAddEventDialog() {
     showDialog(
       context: context,
       builder: (context) => const EventDialog(),
+    );
+  }
+
+  void _showInAppNotification(Event event) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final catColor = event.category != null
+        ? Color(int.parse(event.category!.color.replaceAll('#', '0xFF')))
+        : colorScheme.primary;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        duration: const Duration(seconds: 6),
+        content: Row(
+          children: [
+            Container(
+              width: 4,
+              height: 36,
+              decoration: BoxDecoration(
+                color: catColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'New Event Added!',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    event.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        action: SnackBarAction(
+          label: 'View',
+          textColor: colorScheme.primary,
+          onPressed: () {
+            showDialog(
+              context: context,
+              builder: (context) => EventDetailDialog(event: event),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showCategoryInAppNotification(Category category) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final catColor = Color(int.parse(category.color.replaceAll('#', '0xFF')));
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        duration: const Duration(seconds: 5),
+        content: Row(
+          children: [
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: catColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'New Category Option Added!',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${category.name} option is now available.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -48,7 +184,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final categoriesAsync = ref.watch(categoryProvider);
     final themeMode = ref.watch(themeModeProvider);
     final colorScheme = Theme.of(context).colorScheme;
-    final isMockMode = SupabaseService.instance.isMockMode;
     final size = MediaQuery.of(context).size;
     final isMobile = size.width <= 768;
     final isTablet = size.width > 768 && size.width <= 1100;
@@ -73,7 +208,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     Widget buildSidebar() {
       return Container(
-        width: 260,
+        width: 270,
         color: colorScheme.surfaceContainer,
         child: SafeArea(
           child: Column(
@@ -87,7 +222,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'IEEE Keeper',
+                      'IEEE Calender',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -103,18 +238,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             const SizedBox(height: 16),
             const Divider(indent: 20, endIndent: 20),
 
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              child: Text(
-                'FILTER CATEGORY',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1,
-                  color: Colors.grey,
-                ),
-              ),
-            ),
+
 
             Expanded(
               child: categoriesAsync.when(
@@ -122,20 +246,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   return ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     children: [
-                      ListTile(
-                        leading: Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: colorScheme.outline),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        title: const Text('All Categories', style: TextStyle(fontSize: 14)),
-                        selected: eventState.selectedCategoryId == null,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        onTap: () => ref.read(eventProvider.notifier).setCategoryId('ALL'),
-                      ),
+
                       ...categories.map((cat) {
                         final catColor = Color(int.parse(cat.color.replaceAll('#', '0xFF')));
                         final isSelected = eventState.selectedCategoryId == cat.id;
@@ -166,6 +277,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
 
             const Divider(indent: 20, endIndent: 20),
+
+
 
             Padding(
               padding: const EdgeInsets.all(16.0),
@@ -222,40 +335,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
           
-          const SizedBox(width: 12),
-
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: isMockMode 
-                  ? Colors.amber.withOpacity(0.1) 
-                  : Colors.green.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: isMockMode ? Colors.amber : Colors.green,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  isMockMode ? 'Mock Sync' : 'Real-time Live',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: isMockMode ? Colors.amber[800] : Colors.green[800],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
           const SizedBox(width: 12),
 
           PopupMenuButton<String>(
@@ -322,21 +401,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ? Color(int.parse(event.category!.color.replaceAll('#', '0xFF')))
                   : colorScheme.primary;
 
-              return Card(
-                margin: const EdgeInsets.only(bottom: 10),
-                child: InkWell(
-                  onTap: () => _showEventDetail(event),
-                  borderRadius: BorderRadius.circular(16),
+              return HoverScaleWidget(
+                onTap: () => _showEventDetail(event),
+                child: Card(
+                  elevation: 1,
+                  margin: const EdgeInsets.only(bottom: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: colorScheme.outlineVariant.withOpacity(0.4),
+                      width: 1,
+                    ),
+                  ),
                   child: Padding(
-                    padding: const EdgeInsets.all(12.0),
+                    padding: const EdgeInsets.all(14.0),
                     child: Row(
                       children: [
                         Container(
-                          width: 4,
-                          height: 36,
+                          width: 5,
+                          height: 38,
                           decoration: BoxDecoration(
                             color: catColor,
-                            borderRadius: BorderRadius.circular(2),
+                            borderRadius: BorderRadius.circular(3),
+                            boxShadow: [
+                              BoxShadow(
+                                color: catColor.withOpacity(0.4),
+                                blurRadius: 6,
+                                spreadRadius: 1,
+                              )
+                            ],
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -348,12 +441,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 event.title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13.5,
+                                  letterSpacing: 0.2,
+                                ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${DateFormat('MMM d, h:mm a').format(event.startDatetime)} • ${event.venue}',
-                                style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 11),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.access_time_rounded,
+                                    size: 11,
+                                    color: colorScheme.onSurfaceVariant.withOpacity(0.6),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      '${DateFormat('MMM d, h:mm a').format(event.startDatetime)}${event.venue.isEmpty ? '' : ' • ${event.venue}'}',
+                                      style: TextStyle(
+                                        color: colorScheme.onSurfaceVariant.withOpacity(0.8),
+                                        fontSize: 11,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -411,6 +525,145 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  Widget buildHeaderBanner(ColorScheme colorScheme, int todayCount, int upcomingCount, bool isMobile) {
+    final now = DateTime.now();
+    final dateStr = DateFormat('EEEE, MMMM d').format(now);
+    
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          colors: [
+            colorScheme.primary,
+            colorScheme.primary.withRed(100).withBlue(220),
+            colorScheme.secondary,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.primary.withOpacity(0.2),
+            blurRadius: 16,
+            spreadRadius: 1,
+            offset: const Offset(0, 6),
+          )
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'IEEE CALENDER',
+                  style: TextStyle(
+                    fontSize: isMobile ? 12 : 13,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.5,
+                    color: Colors.white.withOpacity(0.85),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Community Event Calendar',
+                  style: TextStyle(
+                    fontSize: isMobile ? 20 : 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  dateStr,
+                  style: TextStyle(
+                    fontSize: isMobile ? 13 : 14,
+                    color: Colors.white.withOpacity(0.9),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (!isMobile) ...[
+            const SizedBox(width: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.15),
+                  width: 1,
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Active Today',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withOpacity(0.8),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$todayCount',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.15),
+                  width: 1,
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Upcoming',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withOpacity(0.8),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$upcomingCount',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
     return Scaffold(
       drawer: isMobile ? buildSidebar() : null,
       body: Row(
@@ -425,6 +678,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   buildTopBar(),
+                  const SizedBox(height: 20),
+                  
+                  buildHeaderBanner(colorScheme, todayEvents.length, upcomingEvents.length, isMobile),
                   const SizedBox(height: 20),
                   
                   if (isMobile) ...[
@@ -469,7 +725,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         : CalendarWidget(
                             events: eventState.filteredEvents,
                             currentView: sf.CalendarView.month,
-                            onEventTapped: _showEventDetail,
+                            onDateTapped: _showDateEventsDialog,
                           ),
                   ),
                 ],

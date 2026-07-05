@@ -1,6 +1,6 @@
 {
-    "name": "ieee_event_keeper",
-    "short_name": "ieee_event_keeper",
+    "name": "IEEE NB",
+    "short_name": "IEEE NB",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

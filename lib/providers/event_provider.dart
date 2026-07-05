@@ -9,6 +9,7 @@ class EventState {
   final String searchQuery;
   final String? selectedCategoryId;
   final String? errorMessage;
+  final Event? lastAddedEvent;
 
   EventState({
     this.isLoading = true,
@@ -16,6 +17,7 @@ class EventState {
     this.searchQuery = '',
     this.selectedCategoryId,
     this.errorMessage,
+    this.lastAddedEvent,
   });
 
   EventState copyWith({
@@ -24,6 +26,7 @@ class EventState {
     String? searchQuery,
     String? selectedCategoryId,
     String? errorMessage,
+    Event? lastAddedEvent,
   }) {
     return EventState(
       isLoading: isLoading ?? this.isLoading,
@@ -31,6 +34,7 @@ class EventState {
       searchQuery: searchQuery ?? this.searchQuery,
       selectedCategoryId: selectedCategoryId,
       errorMessage: errorMessage ?? this.errorMessage,
+      lastAddedEvent: lastAddedEvent ?? this.lastAddedEvent,
     );
   }
 
@@ -101,7 +105,7 @@ class EventNotifier extends StateNotifier<EventState> {
       if (!_supabaseService.isMockMode) {
         if (!state.events.any((e) => e.id == newEvent.id)) {
           final updated = [newEvent, ...state.events];
-          _sortAndSet(updated);
+          _sortAndSet(updated, lastAddedEvent: newEvent);
         }
       }
     } catch (e) {
@@ -136,9 +140,12 @@ class EventNotifier extends StateNotifier<EventState> {
     }
   }
 
-  void _sortAndSet(List<Event> list) {
+  void _sortAndSet(List<Event> list, {Event? lastAddedEvent}) {
     list.sort((a, b) => a.startDatetime.compareTo(b.startDatetime));
-    state = state.copyWith(events: list);
+    state = state.copyWith(
+      events: list,
+      lastAddedEvent: lastAddedEvent,
+    );
   }
 
   void _setupRealtime() {
@@ -151,6 +158,8 @@ class EventNotifier extends StateNotifier<EventState> {
         case RealtimeEventType.insert:
           if (!updatedEvents.any((e) => e.id == event.id)) {
             updatedEvents.insert(0, event);
+            _sortAndSet(updatedEvents, lastAddedEvent: event);
+            return;
           }
           break;
         case RealtimeEventType.update:

@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart' hide Category;
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import '../models/event.dart';
 import '../models/category.dart';
 import '../utils/constants.dart';
+import 'package:intl/intl.dart';
+import 'package:googleapis_auth/auth_io.dart' as auth;
 
 enum RealtimeEventType { insert, update, delete }
 
@@ -12,6 +16,20 @@ class EventRealtimePayload {
   final Event event;
 
   EventRealtimePayload({required this.type, required this.event});
+}
+
+class CategoryRealtimePayload {
+  final RealtimeEventType type;
+  final Category category;
+
+  CategoryRealtimePayload({required this.type, required this.category});
+}
+
+class SimulatedNotification {
+  final String title;
+  final String body;
+
+  SimulatedNotification({required this.title, required this.body});
 }
 
 class SupabaseService {
@@ -31,6 +49,11 @@ class SupabaseService {
   
   // Controllers
   final _realtimeEventController = StreamController<EventRealtimePayload>.broadcast();
+  final _realtimeCategoryController = StreamController<CategoryRealtimePayload>.broadcast();
+  final _simulatedNotificationController = StreamController<SimulatedNotification>.broadcast();
+
+  Stream<SimulatedNotification> get simulatedNotificationStream => _simulatedNotificationController.stream;
+
 
   // Initialize service
   Future<void> initialize() async {
@@ -129,6 +152,73 @@ class SupabaseService {
     return (response as List).map((e) => Event.fromJson(e)).toList();
   }
 
+  Future<void> _sendFCMNotification(Event event) async {
+    if (Constants.firebaseServiceAccountJson.isEmpty ||
+        Constants.firebaseServiceAccountJson == 'YOUR_FIREBASE_SERVICE_ACCOUNT_JSON') {
+      if (kDebugMode) {
+        print('FCM: Service Account not configured. Skipping push notification.');
+      }
+      return;
+    }
+
+    try {
+      final credentials = auth.ServiceAccountCredentials.fromJson(
+        Constants.firebaseServiceAccountJson,
+      );
+
+      final Map<String, dynamic> serviceAccountMap = json.decode(
+        Constants.firebaseServiceAccountJson,
+      );
+      final projectId = serviceAccountMap['project_id'];
+
+      final scopes = ['https://www.googleapis.com/auth/firebase.messaging'];
+      final client = await auth.clientViaServiceAccount(credentials, scopes);
+
+      final url = 'https://fcm.googleapis.com/v1/projects/$projectId/messages:send';
+
+      final response = await client.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'message': {
+            'topic': 'events',
+            'notification': {
+              'title': 'New Event: ${event.title}',
+              'body': 'Scheduled on ${DateFormat('EEEE, MMM d').format(event.startDatetime)}${event.venue.isNotEmpty ? ' at ${event.venue}' : ''}',
+            },
+            'data': {
+              'click_action': 'FLUTTER_NOTIFICATION_CLICK',
+              'event_id': event.id,
+            },
+            'android': {
+              'notification': {
+                'click_action': 'FLUTTER_NOTIFICATION_CLICK',
+              },
+            },
+            'apns': {
+              'payload': {
+                'aps': {
+                  'category': 'NEW_EVENT',
+                },
+              },
+            },
+          },
+        }),
+      );
+
+      if (kDebugMode) {
+        print('FCM HTTP v1 notification sent response code: ${response.statusCode}');
+      }
+      client.close();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error sending FCM notification: $e');
+      }
+    }
+  }
+
   Future<Event> createEvent(Event event) async {
     if (_isMockMode) {
       final cat = _mockCategories.firstWhere(
@@ -145,6 +235,20 @@ class SupabaseService {
 
       _mockEvents.add(newEvent);
       _realtimeEventController.add(EventRealtimePayload(type: RealtimeEventType.insert, event: newEvent));
+      
+      // If Firebase is not configured, simulate an FCM push notification
+      if (Constants.firebaseApiKey.contains('DummyKey') ||
+          Constants.firebaseServiceAccountJson.contains('YOUR_FIREBASE')) {
+        final formattedDate = DateFormat('EEEE, MMM d').format(newEvent.startDatetime);
+        _simulatedNotificationController.add(
+          SimulatedNotification(
+            title: 'New Event: ${newEvent.title}',
+            body: 'Scheduled on $formattedDate${newEvent.venue.isNotEmpty ? ' at ${newEvent.venue}' : ''}',
+          ),
+        );
+      }
+
+      _sendFCMNotification(newEvent);
       return newEvent;
     }
 
@@ -157,19 +261,20 @@ class SupabaseService {
 
     final createdEvent = Event.fromJson(response);
     
-    // Send Push Notification via FCM topic
-    try {
-      // In a real production app, this would be handled by a Supabase Edge Function
-      // or a backend service. For this collaborative demo, we'll simulate the 
-      // notification trigger logic or use a client-side FCM push if possible.
-      // Since client-side FCM sending is restricted, we'll subscribe users to 
-      // an 'events' topic in main.dart and assume a backend function sends the message.
-      if (kDebugMode) {
-        print('FCM: Event created. Backend would notify "events" topic.');
-      }
-    } catch (e) {
-      if (kDebugMode) print('FCM Notification error: $e');
+    // If Firebase is not configured, simulate an FCM push notification locally
+    if (Constants.firebaseApiKey.contains('DummyKey') ||
+        Constants.firebaseServiceAccountJson.contains('YOUR_FIREBASE')) {
+      final formattedDate = DateFormat('EEEE, MMM d').format(createdEvent.startDatetime);
+      _simulatedNotificationController.add(
+        SimulatedNotification(
+          title: 'New Event: ${createdEvent.title}',
+          body: 'Scheduled on $formattedDate${createdEvent.venue.isNotEmpty ? ' at ${createdEvent.venue}' : ''}',
+        ),
+      );
     }
+    
+    // Send Push Notification via FCM topic
+    await _sendFCMNotification(createdEvent);
 
     return createdEvent;
   }
@@ -240,59 +345,135 @@ class SupabaseService {
 
   // ---------------- REALTIME ENGINE ----------------
 
-  sb.RealtimeChannel? _realtimeChannel;
+  sb.RealtimeChannel? _eventRealtimeChannel;
+  sb.RealtimeChannel? _categoryRealtimeChannel;
+
   Stream<EventRealtimePayload> get realtimeEventStream => _realtimeEventController.stream;
+  Stream<CategoryRealtimePayload> get realtimeCategoryStream => _realtimeCategoryController.stream;
 
   void setupRealtimeSubscription() {
-    if (_isMockMode || _realtimeChannel != null) return;
+    if (_isMockMode) return;
 
-    _realtimeChannel = _client!.channel('public:events');
-    _realtimeChannel!.onPostgresChanges(
-      event: sb.PostgresChangeEvent.all,
-      schema: 'public',
-      table: 'events',
-      callback: (payload) async {
-        final eventType = payload.eventType;
-        final newRecord = payload.newRecord;
-        final oldRecord = payload.oldRecord;
+    if (_eventRealtimeChannel == null) {
+      _eventRealtimeChannel = _client!.channel('public:events');
+      _eventRealtimeChannel!.onPostgresChanges(
+        event: sb.PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'events',
+        callback: (payload) async {
+          final eventType = payload.eventType;
+          final newRecord = payload.newRecord;
+          final oldRecord = payload.oldRecord;
 
-        try {
-          if (eventType == sb.PostgresChangeEvent.insert || eventType == sb.PostgresChangeEvent.update) {
-            final fullEvent = await _fetchSingleEventWithJoins(newRecord['id'] as String);
-            if (fullEvent != null) {
+          try {
+            if (eventType == sb.PostgresChangeEvent.insert || eventType == sb.PostgresChangeEvent.update) {
+              final fullEvent = await _fetchSingleEventWithJoins(newRecord['id'] as String);
+              if (fullEvent != null) {
+                _realtimeEventController.add(
+                  EventRealtimePayload(
+                    type: eventType == sb.PostgresChangeEvent.insert ? RealtimeEventType.insert : RealtimeEventType.update,
+                    event: fullEvent,
+                  ),
+                );
+
+                // If Firebase is not configured, simulate an FCM push notification
+                if (eventType == sb.PostgresChangeEvent.insert) {
+                  if (Constants.firebaseApiKey.contains('DummyKey') ||
+                      Constants.firebaseServiceAccountJson.contains('YOUR_FIREBASE')) {
+                    final formattedDate = DateFormat('EEEE, MMM d').format(fullEvent.startDatetime);
+                    _simulatedNotificationController.add(
+                      SimulatedNotification(
+                        title: 'New Event: ${fullEvent.title}',
+                        body: 'Scheduled on $formattedDate${fullEvent.venue.isNotEmpty ? ' at ${fullEvent.venue}' : ''}',
+                      ),
+                    );
+                  }
+                }
+              }
+            } else if (eventType == sb.PostgresChangeEvent.delete) {
+              final deletedEvent = Event(
+                id: oldRecord['id'] as String,
+                title: '',
+                venue: '',
+                organizerName: '',
+                startDatetime: DateTime.now(),
+                endDatetime: DateTime.now(),
+                createdAt: DateTime.now(),
+                updatedAt: DateTime.now(),
+              );
               _realtimeEventController.add(
-                EventRealtimePayload(
+                EventRealtimePayload(type: RealtimeEventType.delete, event: deletedEvent),
+              );
+            }
+          } catch (e) {
+            if (kDebugMode) print('Error processing realtime payload: $e');
+          }
+        },
+      ).subscribe();
+    }
+
+    if (_categoryRealtimeChannel == null) {
+      _categoryRealtimeChannel = _client!.channel('public:categories');
+      _categoryRealtimeChannel!.onPostgresChanges(
+        event: sb.PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'categories',
+        callback: (payload) {
+          final eventType = payload.eventType;
+          final newRecord = payload.newRecord;
+          final oldRecord = payload.oldRecord;
+
+          try {
+            if (eventType == sb.PostgresChangeEvent.insert || eventType == sb.PostgresChangeEvent.update) {
+              final cat = Category.fromJson(newRecord);
+              _realtimeCategoryController.add(
+                CategoryRealtimePayload(
                   type: eventType == sb.PostgresChangeEvent.insert ? RealtimeEventType.insert : RealtimeEventType.update,
-                  event: fullEvent,
+                  category: cat,
+                ),
+              );
+
+              // If Firebase is not configured, simulate an FCM push notification
+              if (eventType == sb.PostgresChangeEvent.insert) {
+                if (Constants.firebaseApiKey.contains('DummyKey') ||
+                    Constants.firebaseServiceAccountJson.contains('YOUR_FIREBASE')) {
+                  _simulatedNotificationController.add(
+                    SimulatedNotification(
+                      title: 'New Filter Option Available!',
+                      body: 'Category "${cat.name}" has been added.',
+                    ),
+                  );
+                }
+              }
+            } else if (eventType == sb.PostgresChangeEvent.delete) {
+              final deletedCat = Category(
+                id: oldRecord['id'] as String,
+                name: '',
+                color: '#607D8B',
+              );
+              _realtimeCategoryController.add(
+                CategoryRealtimePayload(
+                  type: RealtimeEventType.delete,
+                  category: deletedCat,
                 ),
               );
             }
-          } else if (eventType == sb.PostgresChangeEvent.delete) {
-            final deletedEvent = Event(
-              id: oldRecord['id'] as String,
-              title: '',
-              venue: '',
-              organizerName: '',
-              startDatetime: DateTime.now(),
-              endDatetime: DateTime.now(),
-              createdAt: DateTime.now(),
-              updatedAt: DateTime.now(),
-            );
-            _realtimeEventController.add(
-              EventRealtimePayload(type: RealtimeEventType.delete, event: deletedEvent),
-            );
+          } catch (e) {
+            if (kDebugMode) print('Error processing category realtime payload: $e');
           }
-        } catch (e) {
-          if (kDebugMode) print('Error processing realtime payload: $e');
-        }
-      },
-    ).subscribe();
+        },
+      ).subscribe();
+    }
   }
 
   void cancelRealtimeSubscription() {
-    if (_realtimeChannel != null) {
-      _client?.removeChannel(_realtimeChannel!);
-      _realtimeChannel = null;
+    if (_eventRealtimeChannel != null) {
+      _client?.removeChannel(_eventRealtimeChannel!);
+      _eventRealtimeChannel = null;
+    }
+    if (_categoryRealtimeChannel != null) {
+      _client?.removeChannel(_categoryRealtimeChannel!);
+      _categoryRealtimeChannel = null;
     }
   }
 

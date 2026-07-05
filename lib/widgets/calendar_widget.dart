@@ -5,13 +5,13 @@ import '../models/event.dart';
 class CalendarWidget extends StatelessWidget {
   final List<Event> events;
   final CalendarView currentView;
-  final Function(Event) onEventTapped;
+  final Function(DateTime) onDateTapped;
 
   const CalendarWidget({
     super.key,
     required this.events,
     required this.currentView,
-    required this.onEventTapped,
+    required this.onDateTapped,
   });
 
   @override
@@ -65,11 +65,10 @@ class CalendarWidget extends StatelessWidget {
           ),
         ),
         onTap: (CalendarTapDetails details) {
-          if (details.targetElement == CalendarElement.appointment &&
-              details.appointments != null &&
-              details.appointments!.isNotEmpty) {
-            final Event event = details.appointments!.first as Event;
-            onEventTapped(event);
+          if (details.date != null &&
+              (details.targetElement == CalendarElement.calendarCell ||
+               details.targetElement == CalendarElement.appointment)) {
+            onDateTapped(details.date!);
           }
         },
       ),

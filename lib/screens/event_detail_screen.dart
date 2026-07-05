@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/event.dart';
+import '../providers/event_provider.dart';
 import '../widgets/event_dialog.dart';
 
 class EventDetailDialog extends ConsumerWidget {
@@ -203,8 +204,12 @@ class EventDetailDialog extends ConsumerWidget {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            event.venue,
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                            event.venue.isEmpty ? 'No venue specified' : event.venue,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              color: event.venue.isEmpty ? colorScheme.onSurfaceVariant.withOpacity(0.6) : colorScheme.onSurface,
+                            ),
                           ),
                         ),
                       ],
@@ -217,8 +222,12 @@ class EventDetailDialog extends ConsumerWidget {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'Organized by: ${event.organizerName}',
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                            event.organizerName.isEmpty ? 'Organizer not specified' : 'Organized by: ${event.organizerName}',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              color: event.organizerName.isEmpty ? colorScheme.onSurfaceVariant.withOpacity(0.6) : colorScheme.onSurface,
+                            ),
                           ),
                         ),
                       ],
@@ -278,6 +287,57 @@ class EventDetailDialog extends ConsumerWidget {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         ElevatedButton.icon(
+                          onPressed: () async {
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Delete Event'),
+                                content: const Text('Are you sure you want to delete this event?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, true),
+                                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                    child: const Text('Delete'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirmed == true) {
+                              try {
+                                await ref.read(eventProvider.notifier).deleteEvent(event.id);
+                                if (context.mounted) {
+                                  Navigator.of(context).pop();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Event deleted successfully!'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Error deleting event: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                            }
+                          },
+                          icon: const Icon(Icons.delete_forever_rounded, color: Colors.white),
+                          label: const Text('Delete Event', style: TextStyle(color: Colors.white)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red[700],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        ElevatedButton.icon(
                           onPressed: () {
                             Navigator.of(context).pop();
                             showDialog(
@@ -286,7 +346,7 @@ class EventDetailDialog extends ConsumerWidget {
                             );
                           },
                           icon: const Icon(Icons.edit_rounded, color: Colors.white),
-                          label: const Text('Edit / Delete Event', style: TextStyle(color: Colors.white)),
+                          label: const Text('Edit Event', style: TextStyle(color: Colors.white)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blue[700],
                           ),

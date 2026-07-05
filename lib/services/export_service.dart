@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -56,14 +57,22 @@ class ExportService {
 
     try {
       final bytes = utf8.encode(csvContent);
-      final base64Csv = base64.encode(bytes);
-      final url = 'data:text/csv;base64,$base64Csv';
       
-      final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
+      if (kIsWeb) {
+        final base64Csv = base64.encode(bytes);
+        final url = 'data:text/csv;base64,$base64Csv';
+        final uri = Uri.parse(url);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri);
+        } else {
+          if (kDebugMode) print('Could not launch CSV download URL');
+        }
       } else {
-        if (kDebugMode) print('Could not launch CSV download URL');
+        // Use the printing package to share the CSV bytes natively on mobile/desktop
+        await Printing.sharePdf(
+          bytes: Uint8List.fromList(bytes),
+          filename: 'IEEE_Calender_Events_Schedule.csv',
+        );
       }
     } catch (e) {
       if (kDebugMode) print('Error exporting CSV: $e');
@@ -89,7 +98,7 @@ class ExportService {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text(
-                      'IEEE Event Keeper',
+                      'IEEE Calender',
                       style: pw.TextStyle(
                         fontSize: 24,
                         fontWeight: pw.FontWeight.bold,
@@ -215,7 +224,7 @@ class ExportService {
     // Print / Save PDF via native sharing
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => pdf.save(),
-      name: 'IEEE_Events_Schedule.pdf',
+      name: 'IEEE_Calender_Events_Schedule.pdf',
     );
   }
 }
