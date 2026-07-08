@@ -246,7 +246,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   return ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     children: [
-
+                      ListTile(
+                        leading: Icon(
+                          Icons.grid_view_rounded,
+                          size: 16,
+                          color: eventState.selectedCategoryId == null
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant.withOpacity(0.8),
+                        ),
+                        title: const Text('All', style: TextStyle(fontSize: 14)),
+                        selected: eventState.selectedCategoryId == null,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        onTap: () => ref.read(eventProvider.notifier).setCategoryId(null),
+                      ),
+                      const SizedBox(height: 4),
                       ...categories.map((cat) {
                         final catColor = Color(int.parse(cat.color.replaceAll('#', '0xFF')));
                         final isSelected = eventState.selectedCategoryId == cat.id;
@@ -525,145 +538,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget buildHeaderBanner(ColorScheme colorScheme, int todayCount, int upcomingCount, bool isMobile) {
-    final now = DateTime.now();
-    final dateStr = DateFormat('EEEE, MMMM d').format(now);
-    
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: LinearGradient(
-          colors: [
-            colorScheme.primary,
-            colorScheme.primary.withRed(100).withBlue(220),
-            colorScheme.secondary,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: colorScheme.primary.withOpacity(0.2),
-            blurRadius: 16,
-            spreadRadius: 1,
-            offset: const Offset(0, 6),
-          )
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'IEEE CALENDER',
-                  style: TextStyle(
-                    fontSize: isMobile ? 12 : 13,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.5,
-                    color: Colors.white.withOpacity(0.85),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Community Event Calendar',
-                  style: TextStyle(
-                    fontSize: isMobile ? 20 : 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  dateStr,
-                  style: TextStyle(
-                    fontSize: isMobile ? 13 : 14,
-                    color: Colors.white.withOpacity(0.9),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (!isMobile) ...[
-            const SizedBox(width: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.15),
-                  width: 1,
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Active Today',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withOpacity(0.8),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$todayCount',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.15),
-                  width: 1,
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Upcoming',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withOpacity(0.8),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$upcomingCount',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
     return Scaffold(
       drawer: isMobile ? buildSidebar() : null,
       body: Row(
@@ -680,8 +554,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   buildTopBar(),
                   const SizedBox(height: 20),
                   
-                  buildHeaderBanner(colorScheme, todayEvents.length, upcomingEvents.length, isMobile),
-                  const SizedBox(height: 20),
+
                   
                   if (isMobile) ...[
                     SizedBox(
